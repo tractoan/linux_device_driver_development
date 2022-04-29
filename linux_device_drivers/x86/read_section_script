@@ -1,0 +1,6 @@
+#!/bin/bash
+
+make > tmp
+objdump -h helloworld.ko
+make clean > tmp
+rm tmp
