@@ -1,0 +1,7 @@
+make > tmp
+echo default log level is:
+sudo cat /proc/sys/kernel/printk
+sudo echo 6 > /proc/sys/kernel/printk
+sudo insmod helloworld.ko
+make clean > tmp
+rm tmp
