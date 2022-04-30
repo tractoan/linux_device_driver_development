@@ -1,0 +1,3 @@
+when make menuconfig, Device Drivers/mychardev appeared
+After built kernel with make/make module
+Modules included in the kernel source tree are installed in /lib/modules/$(KERNELRELEASE)/kernel/
