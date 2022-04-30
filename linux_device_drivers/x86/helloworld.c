@@ -6,7 +6,7 @@
 
 struct car {
 	int door_number;
-	char *color;
+	char color;
 	char *model;
 	struct list_head list; /* kernel's list structure */
 };
@@ -38,8 +38,16 @@ static int __init helloworld_init(void)
 
 	list_add(&redcar->list, &carlist);
 	list_add(&bluecar->list, &carlist);
+
+	struct car *acar; /* loop counter */
+	int blue_car_num = 0;
+	list_for_each_entry(acar, &carlist, list) {
+		if(acar->color == 'b')
+		blue_car_num++;
+	}
 	return 0;
 }
+
 
 static void __exit helloworld_exit(void)
 {
@@ -50,7 +58,6 @@ static void __exit helloworld_exit(void)
 
 module_init(helloworld_init);
 module_exit(helloworld_exit);
-
 MODULE_AUTHOR("Toan Nguyen (toannguyenkt69@gmail.com)");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Hello World Module");
