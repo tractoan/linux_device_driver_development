@@ -2,9 +2,28 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 
+//container_of(pointer, container_type, container_field)
+
+struct person {
+	int age;
+	char *name;
+};
+
+struct family {
+	struct person father;
+	struct person mother;
+	struct person son;
+	struct person daughter;
+};
+
+struct family my_family;
+
+struct person *person_ptr = &my_family.father;
+
 static int __init helloworld_init(void)
 {
 	pr_info("Hello World!\n");
+	struct family *fam_ptr = container_of(person_ptr, struct family, father);
 	return 0;
 }
 
