@@ -1,3 +1,12 @@
+/*
+Softirqs as bottom half
+As said in the beginning of this chapter, we will not discuss softirq. Tasklets will be enough
+everywhere you feel the need to use softirqs. Anyway, let's talk about their defaults.
+Softirqs run in a software interrupt context, with preemption disabled, holding the CPU
+until they complete. Softirq should be fast; otherwise they may slow the system down.
+When, for any reason, a softirq prevents the kernel from scheduling other tasks, any new
+incoming softirq will be handled by ksoftirqd threads, running in a process context.
+*/
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
