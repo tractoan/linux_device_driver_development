@@ -7,6 +7,7 @@
 static struct delayed_work shutdown_work;
 static void delayed_shutdown(struct work_struct *work)
 {
+	pr_info("Preparing Shutdown ... \n");
 	char *cmd = "/sbin/shutdown";
 	char *argv[] = {
 						cmd,
