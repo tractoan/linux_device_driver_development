@@ -1,191 +1,46 @@
-/*	
-	Character devices are represented in the kernel as instances of struct cdev. When writing
-a character device driver, your goal is to finally create and register an instance of that
-structure associated with a struct file_operations, exposing a set of operations
-(functions) the user-space can perform on the device. To reach that goal, there are some
-steps we must go through, which are as follows:
-	1. Reserve a major and a range of minors with alloc_chrdev_region().
-	2. Create a class for your devices with class_create(), visible in /sys/class/.
-	3. Set up a struct file_operation (to be given to cdev_init), and for each3.
-	device one needs to create, call cdev_init() and cdev_add() to register the
-	device.
-	4. Then create a device_create() for each device, with a proper name. It will4.
-	result in your device being created in the /dev directory
+/*
+	We all know about plug and play devices. They are handled by the kernel as soon as they
+are plugged in. These may be USB or PCI express, or any other auto-discovered devices.
+Therefore, other device types also exist, which are not hot-pluggable, and which the kernel
+needs to know about prior to being managed. There are I2C, UART, SPI, and other devices
+not wired to enumeration-capable buses.
+There are real physical buses you may already know: USB, I2S, I2C, UART, SPI, PCI, SATA,
+and so on. Such buses are hardware devices named controllers. Since they are a part of SoC,
+they can't be removed, are non-discoverable, and are also called platform devices.
+
+	From an SoC point of view, those devices (buses) are connected internally through
+dedicated buses, and are most of the time proprietary and specific to the manufacturer.
+From the kernel point of view, these are root devices, and connected to nothing. That is
+where the pseudo platform bus comes in. The pseudo platform bus, also called platform bus is
+a kernel virtual bus for devices that do not seat on a physical bus known to the kernel. In
+this chapter, platform devices refer to devices that rely on the pseudo platform bus.
+Dealing with platform devices essentially requires two steps:
+	-	Register a platform driver (with a unique name) that will manage your devices
+	-	Register your platform device with the same name as the driver, and their
+	resources, in order to let the kernel know that your device is there
+That being said, in this chapter, we will discuss the following:
+	-	Platform devices along with their driver
+	-	Devices and driver-matching mechanisms in the kernel
+	-	Registering platform drivers with devices, as well as platform data
 */
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/fs.h>
-#include <linux/cdev.h>
-#include <linux/device.h>
-#include<linux/slab.h>                 //kmalloc()
-#include<linux/uaccess.h>              //copy_to/from_user()
-#include <linux/ioctl.h>
-
-#define WR_VALUE _IOW('a','a',int32_t*)
-#define RD_VALUE _IOR('a','b',int32_t*)
-
-int32_t value = 0;
-
-#define mem_size        1024           //Memory Size
-
-dev_t dev = 0;
-static struct class *dev_class;
-static struct cdev etx_cdev;
-uint8_t *kernel_buffer;
-
-/*
-** Function Prototypes
-*/
-static int      etx_open(struct inode *inode, struct file *file);
-static int      etx_release(struct inode *inode, struct file *file);
-static ssize_t  etx_read(struct file *filp, char __user *buf, size_t len,loff_t * off);
-static ssize_t  etx_write(struct file *filp, const char *buf, size_t len, loff_t * off);
-static long     etx_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
-
-static struct file_operations fops =
-{
-    .owner      = THIS_MODULE,
-    .read       = etx_read,
-    .write      = etx_write,
-    .open       = etx_open,
-	.unlocked_ioctl = etx_ioctl,
-    .release    = etx_release,
-};
-
-/*
-** This function will be called when we open the Device file
-*/
-static int etx_open(struct inode *inode, struct file *file)
-{
-        pr_info("Driver Open Function Called...!!!\n");
-        return 0;
-}
-
-/*
-** This function will be called when we close the Device file
-*/
-static int etx_release(struct inode *inode, struct file *file)
-{
-        pr_info("Driver Release Function Called...!!!\n");
-        return 0;
-}
-
-/*
-** This function will be called when we read the Device file
-*/
-static ssize_t etx_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
-{
-        pr_info("Driver Read Function Called...!!!\n");
-		if( copy_to_user(buf, kernel_buffer, mem_size) )
-        {
-                pr_err("Data Read : Err!\n");
-        }
-        pr_info("Data Read : Done!\n");
-        return 0;
-}
-
-/*
-** This function will be called when we write the Device file
-*/
-static ssize_t etx_write(struct file *filp, const char __user *buf, size_t len, loff_t *off)
-{
-        pr_info("Driver Write Function Called...!!!\n");
-		if( copy_from_user(kernel_buffer, buf, len) )
-        {
-                pr_err("Data Write : Err!\n");
-        }
-        pr_info("Data Write : Done!\n");
-        return len;
-}
-
-/*
-** This function will be called when we write IOCTL on the Device file
-*/
-static long etx_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
-{
-         switch(cmd) {
-                case WR_VALUE:
-                        if( copy_from_user(&value ,(int32_t*) arg, sizeof(value)) )
-                        {
-                                pr_err("Data Write : Err!\n");
-                        }
-                        pr_info("Value = %d\n", value);
-                        break;
-                case RD_VALUE:
-                        if( copy_to_user((int32_t*) arg, &value, sizeof(value)) )
-                        {
-                                pr_err("Data Read : Err!\n");
-                        }
-                        break;
-                default:
-                        pr_info("Default\n");
-                        break;
-        }
-        return 0;
-}
 
 static int __init helloworld_init(void)
 {
-	/*Allocating Major number*/
-	if((alloc_chrdev_region(&dev, 0, 1, "etx_Dev")) <0){
-			pr_err("Cannot allocate major number\n");
-			return -1;
-	}
-	pr_info("Major = %d Minor = %d \n",MAJOR(dev), MINOR(dev));
-
-	/*Creating cdev structure*/
-	cdev_init(&etx_cdev,&fops);
-
-	/*Adding character device to the system*/
-	if((cdev_add(&etx_cdev,dev,1)) < 0){
-		pr_err("Cannot add the device to the system\n");
-		goto r_class;
-	}
-
-	/*Creating struct class*/
-	if((dev_class = class_create(THIS_MODULE,"etx_class")) == NULL){
-		pr_err("Cannot create the struct class\n");
-		goto r_class;
-	}
-
-	/*Creating device*/
-	if((device_create(dev_class,NULL,dev,NULL,"etx_device")) == NULL){
-		pr_err("Cannot create the Device 1\n");
-		goto r_device;
-	}
-
-	/*Creating Physical memory*/
-	if((kernel_buffer = kmalloc(mem_size , GFP_KERNEL)) == 0){
-		pr_info("Cannot allocate memory in kernel\n");
-		goto r_device;
-	}
-        
-	strcpy(kernel_buffer, "Hello_World");
-
-	pr_info("Device Driver Insert...Done!!!\n");
+	pr_info("Hello World!\n");
 	return 0;
-
-r_device:
-	class_destroy(dev_class);
-r_class:
-	unregister_chrdev_region(dev,1);
-	return -1;
 }
 
 static void __exit helloworld_exit(void)
 {
-	kfree(kernel_buffer);
-	device_destroy(dev_class,dev);
-	class_destroy(dev_class);
-	cdev_del(&etx_cdev);
-	unregister_chrdev_region(dev, 1);
-	pr_info("Device Driver Remove...Done!!!\n");
+	pr_info("End of the world!\n");
 }
 
 module_init(helloworld_init);
 module_exit(helloworld_exit);
-
 MODULE_AUTHOR("Toan Nguyen (toannguyenkt69@gmail.com)");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Hello World Module");
