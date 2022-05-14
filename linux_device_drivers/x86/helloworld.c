@@ -18,10 +18,15 @@ steps we must go through, which are as follows:
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
+#include<linux/slab.h>                 //kmalloc()
+#include<linux/uaccess.h>              //copy_to/from_user()
+
+#define mem_size        1024           //Memory Size
 
 dev_t dev = 0;
 static struct class *dev_class;
 static struct cdev etx_cdev;
+uint8_t *kernel_buffer;
 
 /*
 ** Function Prototypes
@@ -64,6 +69,11 @@ static int etx_release(struct inode *inode, struct file *file)
 static ssize_t etx_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
 {
         pr_info("Driver Read Function Called...!!!\n");
+		if( copy_to_user(buf, kernel_buffer, mem_size) )
+        {
+                pr_err("Data Read : Err!\n");
+        }
+        pr_info("Data Read : Done!\n");
         return 0;
 }
 
@@ -73,6 +83,11 @@ static ssize_t etx_read(struct file *filp, char __user *buf, size_t len, loff_t 
 static ssize_t etx_write(struct file *filp, const char __user *buf, size_t len, loff_t *off)
 {
         pr_info("Driver Write Function Called...!!!\n");
+		if( copy_from_user(kernel_buffer, buf, len) )
+        {
+                pr_err("Data Write : Err!\n");
+        }
+        pr_info("Data Write : Done!\n");
         return len;
 }
 
@@ -105,6 +120,15 @@ static int __init helloworld_init(void)
 		pr_err("Cannot create the Device 1\n");
 		goto r_device;
 	}
+
+	/*Creating Physical memory*/
+	if((kernel_buffer = kmalloc(mem_size , GFP_KERNEL)) == 0){
+		pr_info("Cannot allocate memory in kernel\n");
+		goto r_device;
+	}
+        
+	strcpy(kernel_buffer, "Hello_World");
+
 	pr_info("Device Driver Insert...Done!!!\n");
 	return 0;
 
@@ -117,11 +141,12 @@ r_class:
 
 static void __exit helloworld_exit(void)
 {
+	kfree(kernel_buffer);
 	device_destroy(dev_class,dev);
-        class_destroy(dev_class);
-        cdev_del(&etx_cdev);
-        unregister_chrdev_region(dev, 1);
-        pr_info("Device Driver Remove...Done!!!\n");
+	class_destroy(dev_class);
+	cdev_del(&etx_cdev);
+	unregister_chrdev_region(dev, 1);
+	pr_info("Device Driver Remove...Done!!!\n");
 }
 
 module_init(helloworld_init);
